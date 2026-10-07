@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The firmware for the reTerminal E1004.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git describe (tools/gen_version.py)
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      - name: Build (e1004)
+        run: pio run -e e1004
+
+      - name: The image says what it is
+        run: grep -a -q "SWITCHBOARD_FW:e1004:" .pio/build/e1004/firmware.bin
+
+  # The frame (packing, the landscape turn, the doubling) built with g++ and
+  # checked; every viewport fixture screen rendered as this board shows it
+  # (kept as an artifact to look at).
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Pillow (PNG output)
+        run: pip install pillow
+
+      - name: Host tests
+        run: ./test/host/run.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renders
+          path: test/host/out/

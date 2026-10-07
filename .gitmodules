@@ -1,0 +1,3 @@
+[submodule "viewport"]
+	path = viewport
+	url = https://github.com/stumarti/Switchboard-Viewport.git
