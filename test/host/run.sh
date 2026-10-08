@@ -27,12 +27,12 @@ CXX=${CXX:-g++}
 # the viewport's host stubs for Arduino and Adafruit_GFX.
 FLAGS=(-std=gnu++17 -O2 -g -DSB_HOST -DARDUINOJSON_DEFAULT_NESTING_LIMIT=32 -Wall -Wno-unused-function -Wno-sign-compare
   -Isrc -I$VP/test/host/stubs -I$VP/test/host -I$VP/src -I$VP/lib/qrcodegen -I"$BUILD")
-SRC=(test/host/board.cpp src/board/frame.cpp
+SRC=(test/host/board.cpp src/board/frame.cpp src/board/fine.cpp
   $VP/src/render/draw.cpp $VP/src/render/icons.cpp $VP/src/render/screens.cpp $VP/src/render/system.cpp
   $VP/lib/qrcodegen/qrcodegen.c $VP/test/host/stubs/Adafruit_GFX.cpp)
 
 "$CXX" "${FLAGS[@]}" -o "$BUILD/board" "${SRC[@]}"
-"$BUILD/board" "$OUT" $VP/test/fixtures/icons test/fixtures/pictures:$VP/test/fixtures/pictures $VP/test/fixtures/*.json
+"$BUILD/board" "$OUT" test/fixtures/icons:$VP/test/fixtures/icons test/fixtures/pictures:$VP/test/fixtures/pictures $VP/test/fixtures/*.json
 
 if python3 -c "import PIL" 2>/dev/null; then
   python3 - "$OUT" <<'PY'

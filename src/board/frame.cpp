@@ -63,6 +63,43 @@ Ink Frame::getHung(int x, int y, int turns) const {
   return getNative(nx, ny);
 }
 
+void Native::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+  const Ink c = ink(color);
+  for (int yy = y; yy < y + h; ++yy)
+    for (int xx = x; xx < x + w; ++xx) f_.setHung(xx, yy, c, turns_);
+}
+
+void Native::fillScreen(uint16_t color) { f_.fill(ink(color)); }
+
+// One character, as Adafruit_GFX writes it with a custom font, but from the
+// finer face at the panel's resolution: its glyph at twice the cursor, the
+// cursor moved on by the screen's face's advance (so text measures and lines
+// up exactly as it would doubled).
+size_t Doubled::write(uint8_t c) {
+  const GFXfont* fine = finer_ && gfxFont ? finer_(gfxFont) : nullptr;
+  if (!fine) return Adafruit_GFX::write(c);
+  if (c == '\n') {
+    cursor_x = 0;
+    cursor_y += textsize_y * gfxFont->yAdvance;
+    return 1;
+  }
+  if (c == '\r' || c < gfxFont->first || c > gfxFont->last || c < fine->first || c > fine->last) return 1;
+  const GFXglyph& screen = gfxFont->glyph[c - gfxFont->first];
+  const GFXglyph& g = fine->glyph[c - fine->first];
+  const int ts = textsize_x;
+  const Ink colour = ink(textcolor);
+  const int ox = cursor_x * SCALE + g.xOffset * ts, oy = cursor_y * SCALE + g.yOffset * ts;
+  const uint8_t* bits = fine->bitmap + g.bitmapOffset;
+  uint32_t bit = 0;
+  for (int yy = 0; yy < g.height; ++yy)
+    for (int xx = 0; xx < g.width; ++xx, ++bit)
+      if (bits[bit >> 3] & (0x80 >> (bit & 7)))
+        for (int dy = 0; dy < ts; ++dy)
+          for (int dx = 0; dx < ts; ++dx) f_.setHung(ox + xx * ts + dx, oy + yy * ts + dy, colour, turns_);
+  cursor_x += screen.xAdvance * ts;
+  return 1;
+}
+
 void Doubled::drawPixel(int16_t x, int16_t y, uint16_t color) {
   if (x < 0 || y < 0 || x >= width() || y >= height()) return;
   const Ink c = ink(color);

@@ -66,13 +66,35 @@ class Frame {
   uint8_t* buf_;
 };
 
-// The GFX the viewport's screens draw on: 800x600 (landscape) or 600x800,
-// every pixel 2x2 on the panel turned `turns`.
+// The panel at its own resolution, as it hangs (hungW x hungH, pixel for
+// pixel): the screen when a layout is shown small, and where Doubled draws
+// what it draws finely.
+class Native : public Adafruit_GFX {
+ public:
+  Native(Frame& f, int turns) : Adafruit_GFX(hungW(turns), hungH(turns)), f_(f), turns_(turns) {}
+  void drawPixel(int16_t x, int16_t y, uint16_t color) override { f_.setHung(x, y, ink(color), turns_); }
+  void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+  void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) { fillRect(x, y, w, 1, color); }
+  void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) { fillRect(x, y, 1, h, color); }
+  void fillScreen(uint16_t color);
+
+ private:
+  Frame& f_;
+  int turns_;
+};
+
+// The GFX the viewport's screens draw on when a layout is shown large:
+// 800x600 (landscape) or 600x800, every pixel 2x2 on the panel turned
+// `turns`. Text in a face that has a finer version (finer(), the built-in
+// faces made at twice the size) is drawn in that, at the panel's resolution,
+// each character where the screen's face would put it: crisp, not doubled.
 class Doubled : public Adafruit_GFX {
  public:
-  Doubled(Frame& f, int turns)
-      : Adafruit_GFX(landscape(turns) ? SCREEN_LONG : SCREEN_SHORT, landscape(turns) ? SCREEN_SHORT : SCREEN_LONG), f_(f), turns_(turns) {}
+  using Finer = const GFXfont* (*)(const GFXfont*);
+  Doubled(Frame& f, int turns, Finer finer = nullptr)
+      : Adafruit_GFX(landscape(turns) ? SCREEN_LONG : SCREEN_SHORT, landscape(turns) ? SCREEN_SHORT : SCREEN_LONG), f_(f), turns_(turns), finer_(finer) {}
   void drawPixel(int16_t x, int16_t y, uint16_t color) override;
+  size_t write(uint8_t c) override;
   // Faster than one pixel at a time (fillScreen, the screens' bars). Virtual
   // in Adafruit_GFX, so these override on the device; the host tests' GFX
   // stub has them plain, and draws through drawPixel instead.
@@ -83,10 +105,13 @@ class Doubled : public Adafruit_GFX {
   // A picture at the panel's resolution: `bits` w x h (4-bit palette
   // indices, rows padded to whole bytes), its top left at the screen's x, y.
   void finePicture(const uint8_t* bits, int w, int h, int x, int y);
+  Frame& frame() { return f_; }
+  int turns() const { return turns_; }
 
  private:
   Frame& f_;
   int turns_;
+  Finer finer_;
 };
 
 }  // namespace frame

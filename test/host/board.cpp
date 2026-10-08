@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <ArduinoJson.h>
+#include "board/fine.h"
 #include "board/frame.h"
 #include "render/colors.h"
 #include "render/icons.h"
@@ -125,7 +126,14 @@ static bool fixtureIcon(const char* name, int size, draw::Icon& out) {
   const std::string key = std::string(name) + "_" + std::to_string(size);
   auto it = g_icons.find(key);
   if (it == g_icons.end()) {
-    std::string b = slurp((g_iconDir + "/" + key + ".icon").c_str());
+    std::string b;
+    size_t from = 0;
+    while (b.empty() && from <= g_iconDir.size()) {
+      const size_t to = g_iconDir.find(':', from);
+      b = slurp((g_iconDir.substr(from, to == std::string::npos ? std::string::npos : to - from) + "/" + key + ".icon").c_str());
+      if (to == std::string::npos) break;
+      from = to + 1;
+    }
     if (b.size() < 6) return false;
     it = g_icons.emplace(key, b).first;
   }
@@ -169,6 +177,16 @@ static Doubled* g_drawing = nullptr;
 static void finePicture(const uint8_t* bits, int w, int h, int x, int y) {
   if (g_drawing) g_drawing->finePicture(bits, w, h, x, y);
 }
+static void fineIcon(const draw::Icon& ic, int x, int y, uint16_t tint, draw::Mode mode) {
+  if (g_drawing) fine::icon(*g_drawing, ic, x, y, tint, mode);
+}
+// As the board's display.cpp sets it up: large (twice the size, fine) or small.
+static void configure(bool large) {
+  draw::setScreenShape(large ? SCREEN_LONG : NATIVE_H, large ? SCREEN_SHORT : NATIVE_W);
+  draw::fine.scale = large ? SCALE : 1;
+  draw::fine.draw = large ? finePicture : nullptr;
+  draw::fine.icon = large ? fineIcon : nullptr;
+}
 
 // The frame as it hangs, in the server preview's colours.
 static void writeHung(const Frame& f, int turns, const std::string& path) {
@@ -200,19 +218,18 @@ int main(int argc, char** argv) {
   printf("frame: all checks passed\n");
   if (argc < 3) return 0;
 
-  // render <out-dir> <icon-dir> <picture-dir> fixture.json...
+  // render <out-dir> <icon-dirs> <picture-dirs> fixture.json...
+  // (dirs: this repository's, then the viewport's, separated by ':')
   const std::string outDir = argv[1];
   g_iconDir = argv[2];
   g_picDir = argv[3];
   icons::setLookups(nullptr, fixtureIcon);
   icons::setPictureLookup(fixturePicture);
-  // As display::begin() sets it up on the board.
-  draw::setScreenShape(SCREEN_LONG, SCREEN_SHORT);
-  draw::fine.scale = SCALE;
-  draw::fine.draw = finePicture;
   std::vector<uint8_t> buf(BYTES);
   Frame f(buf.data());
   int failed = 0;
+  // Every fixture large (as a layout shows by default); a few small too.
+  static const char* SMALL[] = {"kitchen-panel--status", "photo-frame--photo", "photo-frame--frame", "reception--home"};
   for (int i = 4; i < argc; ++i) {
     JsonDocument doc;
     if (deserializeJson(doc, slurp(argv[i]))) {
@@ -220,40 +237,56 @@ int main(int argc, char** argv) {
       ++failed;
       continue;
     }
-    screens::Ctx ctx;
-    snprintf(ctx.time, sizeof(ctx.time), "11:04");
-    ctx.battPct = 76;
-    ctx.quiet = doc["quiet"] | false;
-    static const char* MARKS[] = {"view-dashboard-outline", "radiator", "shield-home-outline"};
-    for (int k = 0; k < 3; ++k) ctx.marks[k] = MARKS[k];
-    ctx.markCount = 3;
-    ctx.current = doc["current"] | 0;
-    JsonObjectConst screen = doc["data"];
-    // Landscape: turned clockwise once (PANEL_LANDSCAPE 1); portrait: upright.
-    ctx.portrait = doc["portrait"] | false;
-    const int turns = ctx.portrait ? 0 : 1;
-    f.fill(WHITE);
-    Doubled g(f, turns);
-    g_drawing = &g;
-    screens::drawScreen(g, screen, ctx);
-    g_drawing = nullptr;
     std::string name = argv[i];
     name = name.substr(name.find_last_of('/') + 1);
     name = name.substr(0, name.size() - 5);
-    writeHung(f, turns, outDir + "/" + name + ".ppm");
-    printf("%-36s", name.c_str());
-    // Pictures it would fetch (none, if they're all in the fixtures).
-    screens::NullCanvas none;
-    icons::beginCollect();
-    screens::drawScreen(none, screen, ctx);
-    icons::endCollect();
-    for (int k = 0; k < icons::pictureNeedCount(); ++k) printf(" [picture %s %dx%d]", icons::pictureNeed(k).src, icons::pictureNeed(k).w, icons::pictureNeed(k).h);
-    printf("\n");
+    bool alsoSmall = false;
+    for (const char* sm : SMALL) alsoSmall |= name == sm;
+    for (int pass = 0; pass < (alsoSmall ? 2 : 1); ++pass) {
+      const bool large = pass == 0;
+      screens::Ctx ctx;
+      snprintf(ctx.time, sizeof(ctx.time), "11:04");
+      ctx.battPct = 76;
+      ctx.quiet = doc["quiet"] | false;
+      static const char* MARKS[] = {"view-dashboard-outline", "radiator", "shield-home-outline"};
+      for (int k = 0; k < 3; ++k) ctx.marks[k] = MARKS[k];
+      ctx.markCount = 3;
+      ctx.current = doc["current"] | 0;
+      JsonObjectConst screen = doc["data"];
+      // Landscape: turned clockwise once (PANEL_LANDSCAPE 1); portrait: upright.
+      ctx.portrait = doc["portrait"] | false;
+      const int turns = ctx.portrait ? 0 : 1;
+      configure(large);
+      // What it would fetch (none, if the fixtures have it all).
+      screens::NullCanvas none;
+      icons::beginCollect();
+      screens::drawScreen(none, screen, ctx);
+      icons::endCollect();
+      f.fill(WHITE);
+      if (large) {
+        Doubled g(f, turns, fine::finerFont);
+        g_drawing = &g;
+        screens::drawScreen(g, screen, ctx);
+        g_drawing = nullptr;
+      } else {
+        Native g(f, turns);
+        screens::drawScreen(g, screen, ctx);
+      }
+      const std::string out = name + (large ? "" : "-small");
+      writeHung(f, turns, outDir + "/" + out + ".ppm");
+      printf("%-40s", out.c_str());
+      for (int k = 0; k < icons::needCount(); ++k) printf(" %s@%d", icons::need(k).name, icons::need(k).size);
+      for (int k = 0; k < icons::pictureNeedCount(); ++k) printf(" [picture %s %dx%d]", icons::pictureNeed(k).src, icons::pictureNeed(k).w, icons::pictureNeed(k).h);
+      printf("\n");
+    }
   }
   // The splash, as the board shows it on power-on.
+  configure(true);
   f.fill(WHITE);
-  Doubled g(f, 1);
+  Doubled g(f, 1, fine::finerFont);
+  g_drawing = &g;
   sys::splash(g, "starting up");
+  g_drawing = nullptr;
   writeHung(f, 1, outDir + "/system-splash.ppm");
   return failed ? 1 : 0;
 }
