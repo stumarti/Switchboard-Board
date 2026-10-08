@@ -6,7 +6,7 @@
 #   git submodule update --init
 #   test/host/run.sh
 #
-# Writes test/host/out/*.png at 1600x1200 (PNG needs Python's Pillow;
+# Writes test/host/out/*.png as the panel hangs (1600x1200 or 1200x1600) (PNG needs Python's Pillow;
 # otherwise the .ppm files are left).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -32,7 +32,7 @@ SRC=(test/host/board.cpp src/board/frame.cpp
   $VP/lib/qrcodegen/qrcodegen.c $VP/test/host/stubs/Adafruit_GFX.cpp)
 
 "$CXX" "${FLAGS[@]}" -o "$BUILD/board" "${SRC[@]}"
-"$BUILD/board" "$OUT" $VP/test/fixtures/icons $VP/test/fixtures/*.json
+"$BUILD/board" "$OUT" $VP/test/fixtures/icons test/fixtures/pictures:$VP/test/fixtures/pictures $VP/test/fixtures/*.json
 
 if python3 -c "import PIL" 2>/dev/null; then
   python3 - "$OUT" <<'PY'
