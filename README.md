@@ -22,7 +22,7 @@ Switchboard Board turns a **Seeed reTerminal E1004** into a big Switchboard wall
   - **Small**: the screen is laid out on the panel's whole 1600 × 1200, at the viewport's usual sizes, so it fits far more: longer lists, more of the calendar, wider columns.
 
   Set **Preview on** to E1004 in the builder to see the layout at the board's size.
-- **A smart photo frame.** The **Photo frame** screen fills the panel with a photo from Immich and puts a little on it in white, outlined so it reads on any photo: the date, the weather, the next event, a message, the photo's place and date. Choose what shows, which corner and how big.
+- **A smart photo frame.** The **Photo frame** screen fills the panel with a photo from Immich and puts a little on it in white (with a black outline, so it reads on light photos, or without): the date, the weather, the next event, a message, the photo's place and date. Choose what shows, which corner and how big.
 - **Photos at full resolution.** A photo frame, photo section or photo background (and album art) is fetched at the panel's own resolution and drawn pixel for pixel, up to the whole 1600 × 1200, large or small.
 - **Landscape or portrait, either way up.** Set **How it hangs** on the layout: landscape, portrait turned clockwise or anticlockwise, or upside down. In portrait the screen's columns become bands, one under the other.
 - **Everything else is the viewport's.** Wi-Fi setup with your phone, pairing, quiet hours, the carousel, battery days on the server's Home page, the temperature and humidity in Home Assistant, and updates over Wi-Fi. This repository uses the viewport's code directly (the `viewport/` submodule), so a fix to a screen there reaches both displays.
