@@ -145,6 +145,8 @@ void begin() {
   delay(10);
 }
 
+static uint32_t g_refreshMs = 0;
+
 void show(const uint8_t* fb) {
   const uint32_t start = millis();
   both(0xE0, CCSET_V, sizeof(CCSET_V));
@@ -154,11 +156,15 @@ void show(const uint8_t* fb) {
   both(0x04);  // PON
   waitBusy("power on");
   both(0x12, DRF_V, sizeof(DRF_V));  // refresh
+  const uint32_t refreshStart = millis();
   waitBusy("refresh");
+  g_refreshMs = millis() - refreshStart;
   both(0x02, POF_V, sizeof(POF_V));  // power off
   waitBusy("power off");
   LOGF("Panel refreshed in %u ms\n", static_cast<unsigned>(millis() - start));
 }
+
+uint32_t lastRefreshMs() { return g_refreshMs; }
 
 void sleep() {
   left(0x07, DSLP, sizeof(DSLP));  // deep sleep

@@ -25,7 +25,9 @@ namespace display {
 
 namespace {
 uint8_t* g_buf = nullptr;
-bool g_large = true;                  // the layout about to be drawn (use())
+bool g_large = true;
+// The last refresh, kept through deep sleep for the device info screen.
+RTC_DATA_ATTR uint32_t rtcRefreshMs = 0;                  // the layout about to be drawn (use())
 frame::Doubled* g_drawing = nullptr;  // while a large screen is being drawn
 
 void finePicture(const uint8_t* bits, int w, int h, int x, int y) {
@@ -70,6 +72,8 @@ void begin() {
 
 void use(int, bool large) { configure(large); }
 
+uint32_t lastRefreshMs() { return rtcRefreshMs; }
+
 void show(const std::function<void(draw::Gfx&)>& paint, int rotation) {
   begin();
   if (!g_buf) return;
@@ -87,6 +91,7 @@ void show(const std::function<void(draw::Gfx&)>& paint, int rotation) {
   }
   ed2208::begin();
   ed2208::show(g_buf);
+  rtcRefreshMs = ed2208::lastRefreshMs();
   ed2208::sleep();
   // Back to large for whatever comes next (a setup or error screen).
   configure(true);
