@@ -83,8 +83,10 @@ void show(const std::function<void(draw::Gfx&)>& paint, int rotation) {
   if (g_large) {
     frame::Doubled g(f, turns, fine::finerFont);
     g_drawing = &g;
+    draw::fine.target = &g;  // its fine icons and pictures go only on this
     paint(g);
     g_drawing = nullptr;
+    draw::fine.target = nullptr;
   } else {
     frame::Native g(f, turns);
     paint(g);

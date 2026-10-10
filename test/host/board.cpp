@@ -266,8 +266,10 @@ int main(int argc, char** argv) {
       if (large) {
         Doubled g(f, turns, fine::finerFont);
         g_drawing = &g;
+        draw::fine.target = &g;  // its fine icons and pictures go only on this
         screens::drawScreen(g, screen, ctx);
         g_drawing = nullptr;
+        draw::fine.target = nullptr;
       } else {
         Native g(f, turns);
         screens::drawScreen(g, screen, ctx);
@@ -285,8 +287,10 @@ int main(int argc, char** argv) {
   f.fill(WHITE);
   Doubled g(f, 1, fine::finerFont);
   g_drawing = &g;
+  draw::fine.target = &g;  // its fine icons and pictures go only on this
   sys::splash(g, "starting up");
   g_drawing = nullptr;
+  draw::fine.target = nullptr;
   writeHung(f, 1, outDir + "/system-splash.ppm");
   return failed ? 1 : 0;
 }
