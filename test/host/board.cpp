@@ -1,8 +1,8 @@
 // Host tests for the E1004's frame (src/board/frame.cpp): the 4-bit packing,
-// the landscape turn and the doubling. Then every viewport fixture screen
-// (viewport/test/fixtures) drawn as the E1004 shows it, to
-// test/host/out/<name>.ppm at 1600x1200 (as it hangs) and the system
-// screens too.
+// every way up, the doubling and full-resolution pictures. Then every
+// viewport fixture screen (viewport/test/fixtures) drawn as the E1004 shows
+// it, to test/host/out/<name>.ppm as it hangs (1600x1200, or 1200x1600 for a
+// portrait fixture), and the splash.
 //
 //   test/host/run.sh
 #include <stdio.h>
@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <ArduinoJson.h>
+#include "board/fine.h"
 #include "board/frame.h"
 #include "render/colors.h"
 #include "render/icons.h"
@@ -48,52 +49,62 @@ static void testFrame() {
   f.setNative(0, 1600, BLACK);
   CHECK(buf[0] == 0x35);
 
-  // Landscape, turned clockwise (1): its top left is the panel's top right,
-  // its top right the panel's bottom right.
+  // As it hangs: portrait (0, 2) 1200x1600, landscape (1, 3) 1600x1200.
+  CHECK(hungW(0) == 1200 && hungH(0) == 1600 && hungW(1) == 1600 && hungH(1) == 1200);
   int nx, ny;
-  Frame::wideToNative(0, 0, 1, nx, ny);
-  CHECK(nx == 1199 && ny == 0);
-  Frame::wideToNative(1599, 0, 1, nx, ny);
-  CHECK(nx == 1199 && ny == 1599);
-  Frame::wideToNative(0, 1199, 1, nx, ny);
-  CHECK(nx == 0 && ny == 0);
-  // Anticlockwise (3): the opposite corners.
-  Frame::wideToNative(0, 0, 3, nx, ny);
+  // Upright: as the controllers address it.
+  Frame::hungToNative(5, 7, 0, nx, ny);
+  CHECK(nx == 5 && ny == 7);
+  // Turned clockwise once: its bottom left corner comes to the top left,
+  // its top left to the top right.
+  Frame::hungToNative(0, 0, 1, nx, ny);
   CHECK(nx == 0 && ny == 1599);
-  Frame::wideToNative(1599, 1199, 3, nx, ny);
+  Frame::hungToNative(1599, 0, 1, nx, ny);
+  CHECK(nx == 0 && ny == 0);
+  // Upside down, and anticlockwise.
+  Frame::hungToNative(0, 0, 2, nx, ny);
+  CHECK(nx == 1199 && ny == 1599);
+  Frame::hungToNative(0, 0, 3, nx, ny);
   CHECK(nx == 1199 && ny == 0);
-  // Every landscape pixel lands on its own panel pixel.
-  for (int land : {1, 3}) {
+  // Every pixel as it hangs lands on its own panel pixel, every way up.
+  for (int turns = 0; turns < 4; ++turns) {
     std::vector<uint8_t> seen(NATIVE_W * NATIVE_H, 0);
     bool ok = true;
-    for (int y = 0; y < WIDE_H; ++y)
-      for (int x = 0; x < WIDE_W; ++x) {
-        Frame::wideToNative(x, y, land, nx, ny);
+    for (int y = 0; y < hungH(turns); ++y)
+      for (int x = 0; x < hungW(turns); ++x) {
+        Frame::hungToNative(x, y, turns, nx, ny);
         if (nx < 0 || ny < 0 || nx >= NATIVE_W || ny >= NATIVE_H || seen[ny * NATIVE_W + nx]++) ok = false;
       }
     CHECK(ok);
   }
 
-  // Doubled: one screen pixel is 2x2, 120 px down; the margins stay white.
+  // Doubled: 800x600 landscape, 600x800 portrait, each pixel 2x2, filling the panel.
   f.fill(WHITE);
   Doubled g(f, 1);
-  CHECK(g.width() == 800 && g.height() == 480);
+  CHECK(g.width() == 800 && g.height() == 600);
   g.drawPixel(0, 0, GxEPD_RED);
-  CHECK(f.getWide(0, 120, 1) == RED && f.getWide(1, 121, 1) == RED);
-  CHECK(f.getWide(2, 120, 1) == WHITE && f.getWide(0, 119, 1) == WHITE && f.getWide(0, 122, 1) == WHITE);
-  g.drawPixel(799, 479, GxEPD_BLUE);
-  CHECK(f.getWide(1598, 1078, 1) == BLUE && f.getWide(1599, 1079, 1) == BLUE);
-  CHECK(f.getWide(1599, 1080, 1) == WHITE);
+  CHECK(f.getHung(0, 0, 1) == RED && f.getHung(1, 1, 1) == RED && f.getHung(2, 0, 1) == WHITE && f.getHung(0, 2, 1) == WHITE);
+  g.drawPixel(799, 599, GxEPD_BLUE);
+  CHECK(f.getHung(1598, 1198, 1) == BLUE && f.getHung(1599, 1199, 1) == BLUE);
   g.drawPixel(800, 0, GxEPD_BLACK);
   g.drawPixel(0, -1, GxEPD_BLACK);
-  CHECK(f.getWide(0, 118, 1) == WHITE);
-  // fillRect, clipped to the screen.
-  g.fillRect(790, 470, 50, 50, GxEPD_GREEN);
-  CHECK(f.getWide(1580, 1060, 1) == GREEN && f.getWide(1599, 1079, 1) == GREEN && f.getWide(1599, 1080, 1) == WHITE);
+  g.fillRect(790, 590, 50, 50, GxEPD_GREEN);
+  CHECK(f.getHung(1580, 1180, 1) == GREEN && f.getHung(1599, 1199, 1) == GREEN);
+  Doubled p(f, 0);
+  CHECK(p.width() == 600 && p.height() == 800);
   // Colours: the six inks; anything else black.
   CHECK(ink(GxEPD_WHITE) == WHITE && ink(GxEPD_BLACK) == BLACK && ink(GxEPD_RED) == RED);
   CHECK(ink(GxEPD_YELLOW) == YELLOW && ink(GxEPD_GREEN) == GREEN && ink(GxEPD_BLUE) == BLUE);
   CHECK(ink(GxEPD_ORANGE) == BLACK);
+
+  // A picture at full resolution: a 4x2 picture placed at the screen's 10, 20
+  // lands pixel for pixel at the panel's 20, 40, not doubled.
+  f.fill(WHITE);
+  const uint8_t pic[] = {0x12, 0x34, 0x50, 0x01};  // 1 2 3 4 / 5 0 0 1
+  g.finePicture(pic, 4, 2, 10, 20);
+  CHECK(f.getHung(20, 40, 1) == BLACK && f.getHung(21, 40, 1) == RED && f.getHung(22, 40, 1) == YELLOW && f.getHung(23, 40, 1) == GREEN);
+  CHECK(f.getHung(20, 41, 1) == BLUE && f.getHung(21, 41, 1) == WHITE && f.getHung(23, 41, 1) == BLACK);
+  CHECK(f.getHung(24, 40, 1) == WHITE && f.getHung(20, 42, 1) == WHITE);
 }
 
 // --- Rendering ---------------------------------------------------------------
@@ -115,7 +126,14 @@ static bool fixtureIcon(const char* name, int size, draw::Icon& out) {
   const std::string key = std::string(name) + "_" + std::to_string(size);
   auto it = g_icons.find(key);
   if (it == g_icons.end()) {
-    std::string b = slurp((g_iconDir + "/" + key + ".icon").c_str());
+    std::string b;
+    size_t from = 0;
+    while (b.empty() && from <= g_iconDir.size()) {
+      const size_t to = g_iconDir.find(':', from);
+      b = slurp((g_iconDir.substr(from, to == std::string::npos ? std::string::npos : to - from) + "/" + key + ".icon").c_str());
+      if (to == std::string::npos) break;
+      from = to + 1;
+    }
     if (b.size() < 6) return false;
     it = g_icons.emplace(key, b).first;
   }
@@ -127,15 +145,58 @@ static bool fixtureIcon(const char* name, int size, draw::Icon& out) {
   return true;
 }
 
-// The frame as it hangs (landscape), in the server preview's colours.
-static void writeWide(const Frame& f, const std::string& path) {
+// Pictures (photos) as the device keeps them: the server's spectra bitmaps,
+// <FNV-1a of the src>_<w>x<h>.bin at the size asked for (twice the screen's,
+// on this board), in test/fixtures/pictures here, then the viewport's.
+static std::string g_picDir;
+static std::map<std::string, std::string> g_pictures;
+static const uint8_t* fixturePicture(const char* src, int w, int h) {
+  uint32_t hash = 2166136261u;
+  for (const char* p = src; *p; ++p) hash = (hash ^ static_cast<uint8_t>(*p)) * 16777619u;
+  char key[64];
+  snprintf(key, sizeof(key), "%08x_%dx%d", static_cast<unsigned>(hash), w, h);
+  auto it = g_pictures.find(key);
+  if (it == g_pictures.end()) {
+    // This repository's (full-resolution) pictures, then the viewport's.
+    std::string b;
+    size_t from = 0;
+    while (b.empty() && from <= g_picDir.size()) {
+      const size_t to = g_picDir.find(':', from);
+      const std::string dir = g_picDir.substr(from, to == std::string::npos ? std::string::npos : to - from);
+      b = slurp((dir + "/" + key + ".bin").c_str());
+      if (to == std::string::npos) break;
+      from = to + 1;
+    }
+    if (b.size() < static_cast<size_t>((w + 1) / 2) * h) return nullptr;
+    it = g_pictures.emplace(key, b).first;
+  }
+  return reinterpret_cast<const uint8_t*>(it->second.data());
+}
+
+static Doubled* g_drawing = nullptr;
+static void finePicture(const uint8_t* bits, int w, int h, int x, int y) {
+  if (g_drawing) g_drawing->finePicture(bits, w, h, x, y);
+}
+static void fineIcon(const draw::Icon& ic, int x, int y, uint16_t tint, draw::Mode mode) {
+  if (g_drawing) fine::icon(*g_drawing, ic, x, y, tint, mode);
+}
+// As the board's display.cpp sets it up: large (twice the size, fine) or small.
+static void configure(bool large) {
+  draw::setScreenShape(large ? SCREEN_LONG : NATIVE_H, large ? SCREEN_SHORT : NATIVE_W);
+  draw::fine.scale = large ? SCALE : 1;
+  draw::fine.draw = large ? finePicture : nullptr;
+  draw::fine.icon = large ? fineIcon : nullptr;
+}
+
+// The frame as it hangs, in the server preview's colours.
+static void writeHung(const Frame& f, int turns, const std::string& path) {
   FILE* out = fopen(path.c_str(), "wb");
   if (!out) return;
-  fprintf(out, "P6\n%d %d\n255\n", WIDE_W, WIDE_H);
-  for (int y = 0; y < WIDE_H; ++y)
-    for (int x = 0; x < WIDE_W; ++x) {
+  fprintf(out, "P6\n%d %d\n255\n", hungW(turns), hungH(turns));
+  for (int y = 0; y < hungH(turns); ++y)
+    for (int x = 0; x < hungW(turns); ++x) {
       uint8_t rgb[3];
-      switch (f.getWide(x, y, 1)) {
+      switch (f.getHung(x, y, turns)) {
         case WHITE: rgb[0] = 255, rgb[1] = 255, rgb[2] = 255; break;
         case RED: rgb[0] = 198, rgb[1] = 40, rgb[2] = 40; break;
         case YELLOW: rgb[0] = 224, rgb[1] = 180, rgb[2] = 0; break;
@@ -157,42 +218,79 @@ int main(int argc, char** argv) {
   printf("frame: all checks passed\n");
   if (argc < 3) return 0;
 
-  // render <out-dir> <icon-dir> fixture.json...
+  // render <out-dir> <icon-dirs> <picture-dirs> fixture.json...
+  // (dirs: this repository's, then the viewport's, separated by ':')
   const std::string outDir = argv[1];
   g_iconDir = argv[2];
+  g_picDir = argv[3];
   icons::setLookups(nullptr, fixtureIcon);
+  icons::setPictureLookup(fixturePicture);
   std::vector<uint8_t> buf(BYTES);
   Frame f(buf.data());
   int failed = 0;
-  for (int i = 3; i < argc; ++i) {
+  // Every fixture large (as a layout shows by default); a few small too.
+  static const char* SMALL[] = {"kitchen-panel--status", "photo-frame--photo", "photo-frame--frame", "reception--home"};
+  for (int i = 4; i < argc; ++i) {
     JsonDocument doc;
     if (deserializeJson(doc, slurp(argv[i]))) {
       fprintf(stderr, "%s: bad JSON\n", argv[i]);
       ++failed;
       continue;
     }
-    screens::Ctx ctx;
-    snprintf(ctx.time, sizeof(ctx.time), "11:04");
-    ctx.battPct = 76;
-    ctx.quiet = doc["quiet"] | false;
-    static const char* MARKS[] = {"view-dashboard-outline", "radiator", "shield-home-outline"};
-    for (int k = 0; k < 3; ++k) ctx.marks[k] = MARKS[k];
-    ctx.markCount = 3;
-    ctx.current = doc["current"] | 0;
-    JsonObjectConst screen = doc["data"];
-    f.fill(WHITE);
-    Doubled g(f, 1);
-    screens::drawScreen(g, screen, ctx);
     std::string name = argv[i];
     name = name.substr(name.find_last_of('/') + 1);
     name = name.substr(0, name.size() - 5);
-    writeWide(f, outDir + "/" + name + ".ppm");
-    printf("%s\n", name.c_str());
+    bool alsoSmall = false;
+    for (const char* sm : SMALL) alsoSmall |= name == sm;
+    for (int pass = 0; pass < (alsoSmall ? 2 : 1); ++pass) {
+      const bool large = pass == 0;
+      screens::Ctx ctx;
+      snprintf(ctx.time, sizeof(ctx.time), "11:04");
+      ctx.battPct = 76;
+      ctx.quiet = doc["quiet"] | false;
+      static const char* MARKS[] = {"view-dashboard-outline", "radiator", "shield-home-outline"};
+      for (int k = 0; k < 3; ++k) ctx.marks[k] = MARKS[k];
+      ctx.markCount = 3;
+      ctx.current = doc["current"] | 0;
+      JsonObjectConst screen = doc["data"];
+      // Landscape: turned clockwise once (PANEL_LANDSCAPE 1); portrait: upright.
+      ctx.portrait = doc["portrait"] | false;
+      const int turns = ctx.portrait ? 0 : 1;
+      configure(large);
+      // What it would fetch (none, if the fixtures have it all).
+      screens::NullCanvas none;
+      icons::beginCollect();
+      screens::drawScreen(none, screen, ctx);
+      icons::endCollect();
+      f.fill(WHITE);
+      if (large) {
+        Doubled g(f, turns, fine::finerFont);
+        g_drawing = &g;
+        draw::fine.target = &g;  // its fine icons and pictures go only on this
+        screens::drawScreen(g, screen, ctx);
+        g_drawing = nullptr;
+        draw::fine.target = nullptr;
+      } else {
+        Native g(f, turns);
+        screens::drawScreen(g, screen, ctx);
+      }
+      const std::string out = name + (large ? "" : "-small");
+      writeHung(f, turns, outDir + "/" + out + ".ppm");
+      printf("%-40s", out.c_str());
+      for (int k = 0; k < icons::needCount(); ++k) printf(" %s@%d", icons::need(k).name, icons::need(k).size);
+      for (int k = 0; k < icons::pictureNeedCount(); ++k) printf(" [picture %s %dx%d]", icons::pictureNeed(k).src, icons::pictureNeed(k).w, icons::pictureNeed(k).h);
+      printf("\n");
+    }
   }
   // The splash, as the board shows it on power-on.
+  configure(true);
   f.fill(WHITE);
-  Doubled g(f, 1);
+  Doubled g(f, 1, fine::finerFont);
+  g_drawing = &g;
+  draw::fine.target = &g;  // its fine icons and pictures go only on this
   sys::splash(g, "starting up");
-  writeWide(f, outDir + "/system-splash.ppm");
+  g_drawing = nullptr;
+  draw::fine.target = nullptr;
+  writeHung(f, 1, outDir + "/system-splash.ppm");
   return failed ? 1 : 0;
 }

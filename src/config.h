@@ -61,11 +61,13 @@
 #define BTN_KEY2           4
 
 // -----------------------------------------------------------------------------
-// How the 800x480 screens sit on the panel: doubled to 1600x960 and centred
-// in the panel turned landscape (1600x1200), with 120 px of white above and
-// below. PANEL_LANDSCAPE says which way it's turned:
-//   1  the panel's top edge on the right (turned clockwise)
-//   3  the panel's top edge on the left (turned anticlockwise)
+// How the panel hangs. The screens are drawn 800x600 (600x800 portrait) and
+// doubled to fill the 4:3 panel; the layout's rotation (Viewport layouts ->
+// How it hangs) turns them. Landscape is the panel turned this many quarter
+// turns clockwise from how Seeed's firmware draws it upright (portrait):
+//   1  turned clockwise (its top edge on the right)
+//   3  turned anticlockwise (its top edge on the left)
+// If a landscape layout comes out upside down, build with the other.
 // -----------------------------------------------------------------------------
 #ifndef PANEL_LANDSCAPE
 #define PANEL_LANDSCAPE 1
