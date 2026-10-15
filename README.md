@@ -40,9 +40,13 @@ The setup screens come from the viewport and call the Refresh button "the green 
 
 ## Getting started
 
-1. **Flash it** over USB-C (below), or from a release: `switchboard-board-<version>.bin` goes to offset 0.
+1. **Flash it** over USB-C from the browser with the [web flasher](https://stumarti.github.io/Switchboard/) (Chrome or Edge on desktop), which always has the latest release. Or build it yourself (below), or take `switchboard-board-<version>.bin` from a release, which goes to offset 0.
 2. **Put it on Wi-Fi** with your phone: scan the QR code on the panel. See [Setting up a viewport](https://stumarti.github.io/Switchboard/manual/viewport/setup.html); the E1004 is the same.
 3. **Approve it** in Switchboard Server under **Viewports**, and give it a layout. It shows up as a viewport whose board is `e1004`.
+
+### Releasing
+
+Push a tag (`git tag v0.1.0 && git push origin v0.1.0`). The release workflow builds the E1004 firmware and attaches the whole flash image and the over-the-air app image (with its checksum) to a GitHub release. The web flasher picks up the new release within six hours. To have it update straight away, give this repository a `SWITCHBOARD_FLASHER_TOKEN` secret: a fine-grained token for `stumarti/Switchboard` with *Contents: read and write*.
 
 ### Updates over Wi-Fi
 
