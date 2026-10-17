@@ -52,6 +52,9 @@ uint32_t g_initAt = 0;
 // up (noise). esp32-photoframe initialises the panel at boot and sends its
 // first picture seconds later, after Wi-Fi and the download.
 const uint32_t READY_MS = 1000;
+// Warmed up since its power came on (warmUp()).
+bool g_warm = false;
+
 
 // A panel pin high (1) or low (0). ESP-IDF's call, as begin() sets them up.
 inline void lvl(int pin, int v) { gpio_set_level(static_cast<gpio_num_t>(pin), v); }
@@ -86,6 +89,24 @@ void waitBusy(const char* what) {
     }
     delay(10);
   }
+}
+
+// The drive voltages switched on and off once before the first refresh
+// after the panel's power comes on. The master controller makes them for
+// both halves; from cold (the splash at power on, or a refresh after a
+// sleep of any length) the right half's first refresh came out weak and
+// streaked, while one seconds after another (the voltages still up) was
+// whole. So every refresh is now a warm one.
+void warmUp() {
+  if (g_warm) return;
+  const uint32_t t = millis();
+  both(0x04);  // PON
+  waitBusy("warm-up power on");
+  delay(300);
+  both(0x02, POF_V, sizeof(POF_V));  // POF
+  waitBusy("warm-up power off");
+  g_warm = true;
+  LOGF("Panel: warmed up in %u ms\n", static_cast<unsigned>(millis() - t));
 }
 
 // One controller's half: 300 bytes of each of the 1600 rows.
@@ -182,6 +203,7 @@ void begin() {
   delay(10);
   waitBusy("init done");
   g_awake = true;
+  g_warm = false;
   g_initAt = millis();
 }
 
@@ -191,6 +213,7 @@ void show(const uint8_t* fb) {
   begin();
   const uint32_t since = millis() - g_initAt;
   if (since < READY_MS) delay(READY_MS - since);
+  warmUp();
   const uint32_t start = millis();
   both(0xE0, CCSET_V, sizeof(CCSET_V));
   waitBusy("ccset");
