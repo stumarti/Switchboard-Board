@@ -53,9 +53,10 @@ uint32_t g_initAt = 0;
 // first picture seconds later, after Wi-Fi and the download.
 // A second wasn't enough: a screen drawn quickly (the splash, a photo
 // frame) still split down the middle, one drawn slowly (a photo behind a
-// layout, seconds of drawing) never did. So five, counted from the
-// initialisation, which display::show does before drawing.
-const uint32_t READY_MS = 5000;
+// layout, seconds of drawing) never did. Five fixed it; three is being
+// tried, counted from the initialisation, which display::show does before
+// drawing.
+const uint32_t READY_MS = 3000;
 // Warmed up since its power came on (warmUp()).
 bool g_warm = false;
 
