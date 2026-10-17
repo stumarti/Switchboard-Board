@@ -77,6 +77,10 @@ uint32_t lastRefreshMs() { return rtcRefreshMs; }
 void show(const std::function<void(draw::Gfx&)>& paint, int rotation) {
   begin();
   if (!g_buf) return;
+  // The panel's power and initialisation first: it needs a moment before it
+  // takes the picture (ed2208::show waits for the rest), and drawing the
+  // frame covers some of that.
+  ed2208::begin();
   frame::Frame f(g_buf);
   f.fill(frame::WHITE);
   const int turns = turnsFor(rotation);
@@ -91,7 +95,6 @@ void show(const std::function<void(draw::Gfx&)>& paint, int rotation) {
     frame::Native g(f, turns);
     paint(g);
   }
-  ed2208::begin();
   ed2208::show(g_buf);
   rtcRefreshMs = ed2208::lastRefreshMs();
   ed2208::sleep();

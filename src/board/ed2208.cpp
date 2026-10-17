@@ -43,6 +43,15 @@ const uint8_t DSLP[] = {0xA5};
 SPIClass g_spi(FSPI);
 const SPISettings kSpi(10000000, MSBFIRST, SPI_MODE0);
 bool g_begun = false;
+// Powered and initialised (begin() since the last sleep()), and when.
+bool g_awake = false;
+uint32_t g_initAt = 0;
+// How long after its initialisation the panel takes a picture. Sent
+// straight after, the right controller sometimes isn't ready: it ignores
+// the picture and refreshes its half with whatever its memory held at power
+// up (noise). esp32-photoframe initialises the panel at boot and sends its
+// first picture seconds later, after Wi-Fi and the download.
+const uint32_t READY_MS = 1000;
 
 // A command and its data in one chip-select window, to the left controller
 // (both = false) or to both.
@@ -97,6 +106,7 @@ void sendHalf(const uint8_t* fb, int pin, int colOffset) {
 }  // namespace
 
 void begin() {
+  if (g_awake) return;
   // Pins a previous sleep latched low (sleep()).
   for (int p : {EPD_CS_PIN, EPD_CS1_PIN, EPD_DC_PIN, EPD_RES_PIN, EPD_ENABLE_PIN}) gpio_hold_dis(static_cast<gpio_num_t>(p));
 
@@ -152,11 +162,17 @@ void begin() {
   delay(10);
   left(0xB1, RB1, sizeof(RB1));
   delay(10);
+  waitBusy("init done");
+  g_awake = true;
+  g_initAt = millis();
 }
 
 static uint32_t g_refreshMs = 0;
 
 void show(const uint8_t* fb) {
+  begin();
+  const uint32_t since = millis() - g_initAt;
+  if (since < READY_MS) delay(READY_MS - since);
   const uint32_t start = millis();
   both(0xE0, CCSET_V, sizeof(CCSET_V));
   waitBusy("ccset");
@@ -176,6 +192,8 @@ void show(const uint8_t* fb) {
 uint32_t lastRefreshMs() { return g_refreshMs; }
 
 void sleep() {
+  if (!g_awake) return;
+  g_awake = false;
   left(0x07, DSLP, sizeof(DSLP));  // deep sleep
   delay(1);
   waitBusy("deep sleep");
