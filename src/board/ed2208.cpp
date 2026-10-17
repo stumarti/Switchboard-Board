@@ -51,22 +51,32 @@ uint32_t g_initAt = 0;
 // the picture and refreshes its half with whatever its memory held at power
 // up (noise). esp32-photoframe initialises the panel at boot and sends its
 // first picture seconds later, after Wi-Fi and the download.
-const uint32_t READY_MS = 1000;
+// A second wasn't enough: a screen drawn quickly (the splash, a photo
+// frame) still split down the middle, one drawn slowly (a photo behind a
+// layout, seconds of drawing) never did. So five, counted from the
+// initialisation, which display::show does before drawing.
+const uint32_t READY_MS = 5000;
+// Warmed up since its power came on (warmUp()).
+bool g_warm = false;
+
+
+// A panel pin high (1) or low (0). ESP-IDF's call, as begin() sets them up.
+inline void lvl(int pin, int v) { gpio_set_level(static_cast<gpio_num_t>(pin), v); }
 
 // A command and its data in one chip-select window, to the left controller
 // (both = false) or to both.
 void command(uint8_t cmd, const uint8_t* data, size_t len, bool both) {
   g_spi.beginTransaction(kSpi);
-  if (both) digitalWrite(EPD_CS1_PIN, LOW);
-  digitalWrite(EPD_CS_PIN, LOW);
-  digitalWrite(EPD_DC_PIN, LOW);
+  if (both) lvl(EPD_CS1_PIN, 0);
+  lvl(EPD_CS_PIN, 0);
+  lvl(EPD_DC_PIN, 0);
   g_spi.transfer(cmd);
   if (len) {
-    digitalWrite(EPD_DC_PIN, HIGH);
+    lvl(EPD_DC_PIN, 1);
     for (size_t i = 0; i < len; ++i) g_spi.transfer(data[i]);
   }
-  digitalWrite(EPD_CS_PIN, HIGH);
-  if (both) digitalWrite(EPD_CS1_PIN, HIGH);
+  lvl(EPD_CS_PIN, 1);
+  if (both) lvl(EPD_CS1_PIN, 1);
   g_spi.endTransaction();
   if (both) delay(10);
 }
@@ -76,7 +86,7 @@ void both(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0) { command(
 void waitBusy(const char* what) {
   delay(10);
   const uint32_t start = millis();
-  while (digitalRead(EPD_BUSY_PIN) == LOW) {
+  while (gpio_get_level(static_cast<gpio_num_t>(EPD_BUSY_PIN)) == 0) {
     if (millis() - start > 40000) {
       LOGF("Panel: %s still busy after 40 s\n", what);
       return;
@@ -85,21 +95,39 @@ void waitBusy(const char* what) {
   }
 }
 
+// The drive voltages switched on and off once before the first refresh
+// after the panel's power comes on. The master controller makes them for
+// both halves; from cold (the splash at power on, or a refresh after a
+// sleep of any length) the right half's first refresh came out weak and
+// streaked, while one seconds after another (the voltages still up) was
+// whole. So every refresh is now a warm one.
+void warmUp() {
+  if (g_warm) return;
+  const uint32_t t = millis();
+  both(0x04);  // PON
+  waitBusy("warm-up power on");
+  delay(300);
+  both(0x02, POF_V, sizeof(POF_V));  // POF
+  waitBusy("warm-up power off");
+  g_warm = true;
+  LOGF("Panel: warmed up in %u ms\n", static_cast<unsigned>(millis() - t));
+}
+
 // One controller's half: 300 bytes of each of the 1600 rows.
 void sendHalf(const uint8_t* fb, int pin, int colOffset) {
   constexpr int ROW = frame::NATIVE_W / 2;  // 600 bytes
   constexpr int HALF = ROW / 2;             // 300 bytes
   g_spi.beginTransaction(kSpi);
-  digitalWrite(pin, LOW);
-  digitalWrite(EPD_DC_PIN, LOW);
+  lvl(pin, 0);
+  lvl(EPD_DC_PIN, 0);
   g_spi.transfer(0x10);  // DTM
-  digitalWrite(EPD_DC_PIN, HIGH);
+  lvl(EPD_DC_PIN, 1);
   static uint8_t line[HALF];
   for (int row = 0; row < frame::NATIVE_H; ++row) {
     memcpy(line, fb + row * ROW + colOffset, HALF);
     g_spi.writeBytes(line, HALF);
   }
-  digitalWrite(pin, HIGH);
+  lvl(pin, 1);
   g_spi.endTransaction();
 }
 
@@ -107,24 +135,39 @@ void sendHalf(const uint8_t* fb, int pin, int colOffset) {
 
 void begin() {
   if (g_awake) return;
-  // Pins a previous sleep latched low (sleep()).
-  for (int p : {EPD_CS_PIN, EPD_CS1_PIN, EPD_DC_PIN, EPD_RES_PIN, EPD_ENABLE_PIN}) gpio_hold_dis(static_cast<gpio_num_t>(p));
-
-  // Deselected before anything drives the bus; the SD card off.
-  digitalWrite(EPD_CS_PIN, HIGH);
-  digitalWrite(EPD_CS1_PIN, HIGH);
-  digitalWrite(EPD_DC_PIN, LOW);
-  digitalWrite(EPD_RES_PIN, HIGH);
-  pinMode(EPD_CS_PIN, OUTPUT);
-  pinMode(EPD_CS1_PIN, OUTPUT);
-  pinMode(EPD_DC_PIN, OUTPUT);
-  pinMode(EPD_RES_PIN, OUTPUT);
-  pinMode(EPD_BUSY_PIN, INPUT_PULLUP);
-  pinMode(SD_CS_PIN, OUTPUT);
-  digitalWrite(SD_CS_PIN, HIGH);
-
-  pinMode(EPD_ENABLE_PIN, OUTPUT);
-  digitalWrite(EPD_ENABLE_PIN, HIGH);
+  // The pins a previous sleep latched low (sleep()), released and set up the
+  // way esp32-photoframe does it, with ESP-IDF's own calls: the level first,
+  // then the pad made a plain output (which also takes it back from the RTC
+  // domain it was held in). With Arduino's digitalWrite before pinMode, a
+  // wake from deep sleep could leave the right half's chip select low for
+  // the first commands: the right controller took the master's settings
+  // too, and refreshed its half with noise. The first refresh after power
+  // on was fine; every one after a sleep wasn't.
+  const int outs[] = {EPD_CS_PIN, EPD_CS1_PIN, EPD_DC_PIN, EPD_RES_PIN, EPD_ENABLE_PIN, SD_CS_PIN};
+  for (int p : outs) gpio_hold_dis(static_cast<gpio_num_t>(p));
+  gpio_deep_sleep_hold_dis();
+  gpio_set_level(static_cast<gpio_num_t>(EPD_CS_PIN), 1);  // deselected
+  gpio_set_level(static_cast<gpio_num_t>(EPD_CS1_PIN), 1);
+  gpio_set_level(static_cast<gpio_num_t>(SD_CS_PIN), 1);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_DC_PIN), 0);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_RES_PIN), 1);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_ENABLE_PIN), 0);  // the panel off, to start clean
+  gpio_config_t cs = {};
+  cs.pin_bit_mask = (1ULL << EPD_CS_PIN) | (1ULL << EPD_CS1_PIN) | (1ULL << SD_CS_PIN);
+  cs.mode = GPIO_MODE_OUTPUT;
+  cs.pull_up_en = GPIO_PULLUP_ENABLE;
+  gpio_config(&cs);
+  gpio_config_t out = {};
+  out.pin_bit_mask = (1ULL << EPD_DC_PIN) | (1ULL << EPD_RES_PIN) | (1ULL << EPD_ENABLE_PIN);
+  out.mode = GPIO_MODE_OUTPUT;
+  gpio_config(&out);
+  gpio_config_t busy = {};
+  busy.pin_bit_mask = 1ULL << EPD_BUSY_PIN;
+  busy.mode = GPIO_MODE_INPUT;
+  busy.pull_up_en = GPIO_PULLUP_ENABLE;
+  gpio_config(&busy);
+  delay(20);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_ENABLE_PIN), 1);
   delay(100);  // the panel's supply settling
 
   if (!g_begun) {
@@ -132,9 +175,9 @@ void begin() {
     g_begun = true;
   }
 
-  digitalWrite(EPD_RES_PIN, LOW);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_RES_PIN), 0);
   delay(20);
-  digitalWrite(EPD_RES_PIN, HIGH);
+  gpio_set_level(static_cast<gpio_num_t>(EPD_RES_PIN), 1);
   delay(20);
 
   waitBusy("init");
@@ -164,6 +207,7 @@ void begin() {
   delay(10);
   waitBusy("init done");
   g_awake = true;
+  g_warm = false;
   g_initAt = millis();
 }
 
@@ -173,6 +217,9 @@ void show(const uint8_t* fb) {
   begin();
   const uint32_t since = millis() - g_initAt;
   if (since < READY_MS) delay(READY_MS - since);
+  LOGF("Panel: picture %u ms after its initialisation (waited %u ms)\n", static_cast<unsigned>(millis() - g_initAt),
+       static_cast<unsigned>(since < READY_MS ? READY_MS - since : 0));
+  warmUp();
   const uint32_t start = millis();
   both(0xE0, CCSET_V, sizeof(CCSET_V));
   waitBusy("ccset");
@@ -199,12 +246,12 @@ void sleep() {
   waitBusy("deep sleep");
   // Panel-facing pins low before its supply goes, so they don't feed it
   // through its protection diodes; then held low through deep sleep.
-  digitalWrite(EPD_CS_PIN, LOW);
-  digitalWrite(EPD_CS1_PIN, LOW);
-  digitalWrite(EPD_DC_PIN, LOW);
-  digitalWrite(EPD_RES_PIN, LOW);
+  lvl(EPD_CS_PIN, 0);
+  lvl(EPD_CS1_PIN, 0);
+  lvl(EPD_DC_PIN, 0);
+  lvl(EPD_RES_PIN, 0);
   delay(100);
-  digitalWrite(EPD_ENABLE_PIN, LOW);
+  lvl(EPD_ENABLE_PIN, 0);
   for (int p : {EPD_CS_PIN, EPD_CS1_PIN, EPD_DC_PIN, EPD_RES_PIN, EPD_ENABLE_PIN}) gpio_hold_en(static_cast<gpio_num_t>(p));
   gpio_deep_sleep_hold_en();
 }
