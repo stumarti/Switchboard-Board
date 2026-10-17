@@ -6,9 +6,11 @@
 // only. A refresh takes about 20 s.
 //
 // Ported from esp32-photoframe's driver (MIT, Wei-Ning Huang):
-// components/epaper_driver_ed2208_nca/src/driver_ed2208_nca.c, whose
-// initialisation values come from the panel maker's T133A01_Defines.h. Same
-// commands, values and order; Arduino's SPI and GPIO in place of ESP-IDF's.
+// components/epaper_driver_ed2208_nca/src/driver_ed2208_nca.c, with the
+// initialisation (values, the PLL and DC-DC settings, and their order) from
+// Seeed's own library for the E1004 (Seeed_GFX, MIT:
+// TFT_Drivers/T133A01_Defines.h). Arduino's SPI and GPIO in place of
+// ESP-IDF's.
 // =============================================================================
 #pragma once
 #include <stdint.h>

@@ -12,18 +12,25 @@ namespace ed2208 {
 
 namespace {
 
-// --- Initialisation values (T133A01_Defines.h, via esp32-photoframe) ---
+// --- Initialisation values: Seeed's, for this panel on the E1004 ---
+// (Seeed_GFX, TFT_Drivers/T133A01_Defines.h, the driver its E1004 setup
+// uses.) esp32-photoframe's older set (a weaker booster, no PLL or DC-DC
+// settings) left the right controller's first refresh after the panel's
+// power came up washed out: its half grey and streaked, the next refresh
+// fine.
 const uint8_t PSR_V[] = {0xDF, 0x69};
 const uint8_t PWR_V[] = {0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38};
 const uint8_t POF_V[] = {0x00};
-const uint8_t DRF_V[] = {0x01};
+const uint8_t DRF_V[] = {0x00};
 const uint8_t CDI_V[] = {0x37};
 const uint8_t TRES_V[] = {0x04, 0xB0, 0x03, 0x20};
 const uint8_t CCSET_V[] = {0x01};
 const uint8_t PWS_V[] = {0x22};
-const uint8_t BTST_P_V[] = {0xD8, 0x18};
-const uint8_t BTST_N_V[] = {0xD8, 0x18};
-const uint8_t R74[] = {0xC0, 0x1C, 0x1C, 0xCC, 0xCC, 0xCC, 0x15, 0x15, 0x55};
+const uint8_t PLL_V[] = {0x08};
+const uint8_t DCDC_V[] = {0x44, 0x54, 0x00};
+const uint8_t BTST_P_V[] = {0xE0, 0x20};
+const uint8_t BTST_N_V[] = {0xE0, 0x20};
+const uint8_t R74[] = {0x00, 0x0C, 0x0C, 0xD9, 0xDD, 0xDD, 0x15, 0x15, 0x55};
 const uint8_t RF0[] = {0x49, 0x55, 0x13, 0x5D, 0x05, 0x10};
 const uint8_t R60[] = {0x03, 0x03};
 const uint8_t R86[] = {0x10};
@@ -124,6 +131,8 @@ void begin() {
   left(0x74, R74, sizeof(R74));
   both(0xF0, RF0, sizeof(RF0));
   both(0x00, PSR_V, sizeof(PSR_V));
+  both(0x30, PLL_V, sizeof(PLL_V));
+  left(0xA5, DCDC_V, sizeof(DCDC_V));
   both(0x50, CDI_V, sizeof(CDI_V));
   both(0x60, R60, sizeof(R60));
   both(0x86, R86, sizeof(R86));
