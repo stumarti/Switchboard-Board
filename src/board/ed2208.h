@@ -17,15 +17,18 @@
 
 namespace ed2208 {
 
-// Power the panel on, reset it and send its initialisation.
+// Power the panel on, reset it and send its initialisation (if it isn't
+// already). Call it early: show() waits until the panel has had a second.
 void begin();
 // Send a whole frame (frame::BYTES, the controllers' colour codes, 2 pixels
-// a byte) and refresh: returns when the panel has finished.
+// a byte) and refresh: returns when the panel has finished. Begins the panel
+// if need be, and waits for it to be ready.
 void show(const uint8_t* frame);
 // How long the last show()'s refresh took, in ms.
 uint32_t lastRefreshMs();
 // Put the controllers to sleep and switch the panel's power off; the pins
-// are held low through deep sleep. begin() undoes it.
+// are held low through deep sleep. begin() undoes it. Nothing if it's
+// already asleep.
 void sleep();
 
 }  // namespace ed2208
