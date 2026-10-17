@@ -51,7 +51,11 @@ uint32_t g_initAt = 0;
 // the picture and refreshes its half with whatever its memory held at power
 // up (noise). esp32-photoframe initialises the panel at boot and sends its
 // first picture seconds later, after Wi-Fi and the download.
-const uint32_t READY_MS = 1000;
+// A second wasn't enough: a screen drawn quickly (the splash, a photo
+// frame) still split down the middle, one drawn slowly (a photo behind a
+// layout, seconds of drawing) never did. So five, counted from the
+// initialisation, which display::show does before drawing.
+const uint32_t READY_MS = 5000;
 // Warmed up since its power came on (warmUp()).
 bool g_warm = false;
 
@@ -213,6 +217,8 @@ void show(const uint8_t* fb) {
   begin();
   const uint32_t since = millis() - g_initAt;
   if (since < READY_MS) delay(READY_MS - since);
+  LOGF("Panel: picture %u ms after its initialisation (waited %u ms)\n", static_cast<unsigned>(millis() - g_initAt),
+       static_cast<unsigned>(since < READY_MS ? READY_MS - since : 0));
   warmUp();
   const uint32_t start = millis();
   both(0xE0, CCSET_V, sizeof(CCSET_V));
